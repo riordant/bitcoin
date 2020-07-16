@@ -152,6 +152,9 @@ Build System
   should run the `./autogen.sh` script from the root of the unpacked archive.
   This implies that `autotools` and other required packages are installed on the
   user's system. (#18331)
+=======
+New RPCs
+--------
 
 New settings
 ------------
