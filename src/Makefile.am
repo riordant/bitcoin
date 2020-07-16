@@ -235,6 +235,7 @@ BITCOIN_CORE_H = \
   versionbitsinfo.h \
   walletinitinterface.h \
   wallet/coincontrol.h \
+  wallet/mnemoniccontainer.h \
   wallet/crypter.h \
   wallet/db.h \
   wallet/feebumper.h \
@@ -245,6 +246,8 @@ BITCOIN_CORE_H = \
   wallet/scriptpubkeyman.h \
   wallet/wallet.h \
   wallet/walletdb.h \
+  wallet/bip39.h \
+  wallet/bip39_english.h \
   wallet/wallettool.h \
   wallet/walletutil.h \
   wallet/coinselection.h \
@@ -344,6 +347,8 @@ libbitcoin_wallet_a_SOURCES = \
   interfaces/wallet.cpp \
   wallet/coincontrol.cpp \
   wallet/crypter.cpp \
+  wallet/bip39.cpp \
+  wallet/mnemoniccontainer.cpp \
   wallet/db.cpp \
   wallet/feebumper.cpp \
   wallet/fees.cpp \
