@@ -126,7 +126,7 @@ UniValue importprivkey(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_WALLET_ERROR, "Cannot import private keys to a wallet with private keys disabled");
     }
 
-    EnsureLegacyScriptPubKeyMan(*wallet, true);
+    LegacyScriptPubKeyMan& spk_man = EnsureLegacyScriptPubKeyMan(*wallet, true);
 
     WalletRescanReserver reserver(*pwallet);
     bool fRescan = true;
@@ -134,6 +134,12 @@ UniValue importprivkey(const JSONRPCRequest& request)
         LOCK(pwallet->cs_wallet);
 
         EnsureWalletIsUnlocked(pwallet);
+
+        const CHDChain& chain = spk_man.GetHDChain();
+        if(chain.nVersion == chain.VERSION_BIP_39){
+            throw JSONRPCError(RPC_WALLET_ERROR, "Importing wallets and private keys is disabled for mnemonic-enabled wallets."
+                                                 "To import your dump file, create a non-mnemonic wallet by setting \"usemnemonic=0\" in your bitcoin.conf file, after backing up and removing your existing wallet.");
+        }
 
         std::string strSecret = request.params[0].get_str();
         std::string strLabel = "";
@@ -518,7 +524,7 @@ UniValue importwallet(const JSONRPCRequest& request)
     if (!wallet) return NullUniValue;
     CWallet* const pwallet = wallet.get();
 
-    EnsureLegacyScriptPubKeyMan(*wallet, true);
+    LegacyScriptPubKeyMan& spk_man = EnsureLegacyScriptPubKeyMan(*wallet, true);
 
     if (pwallet->chain().havePruned()) {
         // Exit early and print an error.
@@ -538,6 +544,12 @@ UniValue importwallet(const JSONRPCRequest& request)
         LOCK(pwallet->cs_wallet);
 
         EnsureWalletIsUnlocked(pwallet);
+        
+        const CHDChain& chain = spk_man.GetHDChain();
+        if(chain.nVersion == chain.VERSION_BIP_39){
+            throw JSONRPCError(RPC_WALLET_ERROR, "Importing wallets and private keys is disabled for mnemonic-enabled wallets."
+                                                 "To import your dump file, create a non-mnemonic wallet by setting \"usemnemonic=0\" in your bitcoin.conf file, after backing up and removing your existing wallet.");
+        }
 
         fsbridge::ifstream file;
         file.open(request.params[0].get_str(), std::ios::in | std::ios::ate);
@@ -772,9 +784,31 @@ UniValue dumpwallet(const JSONRPCRequest& request)
     file << strprintf("#   mined on %s\n", FormatISO8601DateTime(block_time));
     file << "\n";
 
-    // add the base58check encoded extended master if the wallet uses HD
+    MnemonicContainer mContainer = spk_man.GetMnemonicContainer();
+    const CHDChain& chain = spk_man.GetHDChain();
     CKeyID seed_id = spk_man.GetHDChain().seed_id;
-    if (!seed_id.IsNull())
+    if(!mContainer.IsNull() && chain.nVersion >= CHDChain::VERSION_BIP_39)
+    {
+        if(mContainer.IsCrypted())
+        {
+            if(!spk_man.DecryptMnemonicContainer(mContainer))
+                throw JSONRPCError(RPC_INTERNAL_ERROR, "Cannot decrypt hd chain");
+        }
+
+        SecureString mnemonic;
+        //Don't dump mnemonic words in case user has set only hd seed during wallet creation
+        if(mContainer.GetMnemonic(mnemonic))
+            file << "# mnemonic: " << mnemonic << "\n";
+
+        SecureVector seed = mContainer.GetSeed();
+        file << "# HD seed: " << HexStr(seed) << "\n\n";
+
+        CExtKey masterKey;
+        masterKey.SetSeed(&seed[0], seed.size());
+
+        file << "# extended private masterkey: " << EncodeExtKey(masterKey) << "\n";
+    }
+    else if (!seed_id.IsNull())
     {
         CKey seed;
         if (spk_man.GetKey(seed_id, seed)) {

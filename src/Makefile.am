@@ -241,6 +241,8 @@ BITCOIN_CORE_H = \
   validationinterface.h \
   versionbits.h \
   versionbitsinfo.h \
+  wallet/bip39.h \
+  wallet/bip39_english.h \
   wallet/bdb.h \
   wallet/coincontrol.h \
   wallet/coinselection.h \
@@ -251,6 +253,7 @@ BITCOIN_CORE_H = \
   wallet/fees.h \
   wallet/ismine.h \
   wallet/load.h \
+  wallet/mnemoniccontainer.h \
   wallet/rpcwallet.h \
   wallet/salvage.h \
   wallet/scriptpubkeyman.h \
@@ -354,6 +357,8 @@ libbitcoin_wallet_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libbitcoin_wallet_a_SOURCES = \
   interfaces/wallet.cpp \
   wallet/bdb.cpp \
+  wallet/bip39.cpp \
+  wallet/mnemoniccontainer.cpp \
   wallet/coincontrol.cpp \
   wallet/context.cpp \
   wallet/crypter.cpp \

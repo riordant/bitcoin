@@ -13,6 +13,7 @@
 #include <util/message.h>
 #include <wallet/crypter.h>
 #include <wallet/ismine.h>
+#include <wallet/mnemoniccontainer.h>
 #include <wallet/walletdb.h>
 #include <wallet/walletutil.h>
 
@@ -305,6 +306,8 @@ private:
     CHDChain m_hd_chain;
     std::unordered_map<CKeyID, CHDChain, KeyIDHasher> m_inactive_hd_chains;
 
+    MnemonicContainer mnemonicContainer;
+
     /* HD derive new child key (on internal or external chain) */
     void DeriveNewChildKey(WalletBatch& batch, CKeyMetadata& metadata, CKey& secret, CHDChain& hd_chain, bool internal = false) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
 
@@ -428,6 +431,14 @@ public:
     void LoadHDChain(const CHDChain& chain);
     const CHDChain& GetHDChain() const { return m_hd_chain; }
     void AddInactiveHDChain(const CHDChain& chain);
+
+
+    void GenerateNewMnemonic();
+    bool SetMnemonicContainer(const MnemonicContainer& mnContainer, bool memonly);
+    const MnemonicContainer& GetMnemonicContainer() { return mnemonicContainer; }
+
+    bool EncryptMnemonicContainer(const CKeyingMaterial& vMasterKeyIn);
+    bool DecryptMnemonicContainer(MnemonicContainer& mnContainer);
 
     //! Adds a watch-only address to the store, without saving it to disk (used by LoadWallet)
     bool LoadWatchOnly(const CScript &dest);

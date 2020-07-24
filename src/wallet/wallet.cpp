@@ -30,6 +30,7 @@
 #include <util/rbf.h>
 #include <util/string.h>
 #include <util/translation.h>
+#include <wallet/bip39.h>
 #include <wallet/coincontrol.h>
 #include <wallet/fees.h>
 
@@ -604,16 +605,12 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
         Lock();
         Unlock(strWalletPassphrase);
 
-        // If we are using descriptors, make new descriptors with a new seed
-        if (IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS) && !IsWalletFlagSet(WALLET_FLAG_BLANK_WALLET)) {
-            SetupDescriptorScriptPubKeyMans();
-        } else if (auto spk_man = GetLegacyScriptPubKeyMan()) {
-            // if we are using HD, replace the HD seed with a new one
-            if (spk_man->IsHDEnabled()) {
-                if (!spk_man->SetupGeneration(true)) {
-                    return false;
-                }
-            }
+        auto spk_man = GetOrCreateLegacyScriptPubKeyMan();
+        if(!spk_man->GetMnemonicContainer().IsNull() && spk_man->GetHDChain().nVersion >= CHDChain::VERSION_BIP_39) {
+            assert(spk_man->EncryptMnemonicContainer(vMasterKey));
+            SetMinVersion(FEATURE_HD);
+            assert(spk_man->SetMnemonicContainer(spk_man->GetMnemonicContainer(), false));
+            TopUpKeyPool();
         }
         Lock();
 
@@ -3814,21 +3811,36 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
             walletInstance->SetupLegacyScriptPubKeyMan();
         }
 
-        if (!(wallet_creation_flags & (WALLET_FLAG_DISABLE_PRIVATE_KEYS | WALLET_FLAG_BLANK_WALLET))) {
-            LOCK(walletInstance->cs_wallet);
-            if (walletInstance->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
-                walletInstance->SetupDescriptorScriptPubKeyMans();
-                // SetupDescriptorScriptPubKeyMans already calls SetupGeneration for us so we don't need to call SetupGeneration separately
-            } else {
-                // Legacy wallets need SetupGeneration here.
-                for (auto spk_man : walletInstance->GetActiveScriptPubKeyMans()) {
-                    if (!spk_man->SetupGeneration()) {
-                        error = _("Unable to generate initial keys");
-                        return nullptr;
+        // Setup mnemonic
+         if(gArgs.GetBoolArg("-usemnemonic", DEFAULT_USE_MNEMONIC)) { 
+             if (gArgs.GetArg("-mnemonicpassphrase", "").size() > 256) {
+                 throw std::runtime_error(std::string(__func__) + ": Mnemonic passphrase is too long, must be at most 256 characters");
+             }
+             // generate a new HD chain
+             auto spk_man = walletInstance->GetLegacyScriptPubKeyMan();
+             spk_man->GenerateNewMnemonic();
+             walletInstance->SetMinVersion(FEATURE_HD);
+             /* set rescan to true.
+              * if blockchain data is not present it has no effect, but it's needed for a mnemonic restore where chain data is present.
+              */
+             gArgs.SoftSetBoolArg("-rescan", true);
+        }else {
+            if (!(wallet_creation_flags & (WALLET_FLAG_DISABLE_PRIVATE_KEYS | WALLET_FLAG_BLANK_WALLET))) {
+                LOCK(walletInstance->cs_wallet);
+                if (walletInstance->IsWalletFlagSet(WALLET_FLAG_DESCRIPTORS)) {
+                    walletInstance->SetupDescriptorScriptPubKeyMans();
+                    // SetupDescriptorScriptPubKeyMans already calls SetupGeneration for us so we don't need to call SetupGeneration separately
+                } else {
+                    // Legacy wallets need SetupGeneration here.
+                    for (auto spk_man : walletInstance->GetActiveScriptPubKeyMans()) {
+                        if (!spk_man->SetupGeneration()) {
+                            error = _("Unable to generate initial keys");
+                            return nullptr;
+                        }
                     }
                 }
             }
-        }
+       } 
 
         walletInstance->chainStateFlushed(chain.getTipLocator());
     } else if (wallet_creation_flags & WALLET_FLAG_DISABLE_PRIVATE_KEYS) {

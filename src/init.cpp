@@ -57,6 +57,8 @@
 #include <util/threadnames.h>
 #include <util/translation.h>
 #include <validation.h>
+#include <wallet/bip39.h>
+#include <hash.h>
 
 #include <validationinterface.h>
 #include <walletinitinterface.h>
@@ -852,6 +854,12 @@ void InitParameterInteraction()
     if (gArgs.GetBoolArg("-whitelistforcerelay", DEFAULT_WHITELISTFORCERELAY)) {
         if (gArgs.SoftSetBoolArg("-whitelistrelay", true))
             LogPrintf("%s: parameter interaction: -whitelistforcerelay=1 -> setting -whitelistrelay=1\n", __func__);
+    }
+
+    // Forcing all remaining mnemonic settings off if -usemnemonic is off.
+    if (!gArgs.GetBoolArg("-usemnemonic", DEFAULT_USE_MNEMONIC)) {
+        if (gArgs.SoftSetArg("-mnemonic", "") && gArgs.SoftSetArg("-mnemonicpassphrase", "") && gArgs.SoftSetArg("-hdseed", "not hex"))
+            LogPrintf("%s: Potential parameter interaction: -usemnemonic=0 -> setting -mnemonic=\"\", -mnemonicpassphrase=\"\"\n, -hdseed=\"not hex\"\n", __func__);
     }
 }
 
