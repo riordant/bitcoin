@@ -845,6 +845,118 @@ void LegacyScriptPubKeyMan::SetHDChain(const CHDChain& chain, bool memonly)
     hdChain = chain;
 }
 
+void LegacyScriptPubKeyMan::GenerateNewMnemonic(){
+    CHDChain newHdChain;
+    MnemonicContainer mnContainer;
+
+    std::string strSeed = gArgs.GetArg("-hdseed", "not hex");
+
+    bool isHDSeedSet = strSeed != "not hex";
+
+    if(isHDSeedSet && IsHex(strSeed)) {
+        std::vector<unsigned char> seed = ParseHex(strSeed);
+        if (!mnContainer.SetSeed(SecureVector(seed.begin(), seed.end())))
+            throw std::runtime_error(std::string(__func__) + ": SetSeed failed");
+        newHdChain.seed_id = CKeyID(Hash160(seed.begin(), seed.end()));
+    }
+    else {
+        LogPrintf("CWallet::GenerateNewMnemonic -- Generating new MnemonicContainer\n");
+
+        std::string mnemonic = gArgs.GetArg("-mnemonic", "");
+        std::string mnemonicPassphrase = gArgs.GetArg("-mnemonicpassphrase", "");
+        //Use 24 words by default;
+        bool use12Words = gArgs.GetBoolArg("-use12", false);
+        mnContainer.Set12Words(use12Words);
+
+        SecureString secureMnemonic(mnemonic.begin(), mnemonic.end());
+        SecureString securePassphrase(mnemonicPassphrase.begin(), mnemonicPassphrase.end());
+
+        if (!mnContainer.SetMnemonic(secureMnemonic, securePassphrase))
+            throw std::runtime_error(std::string(__func__) + ": SetMnemonic failed");
+        newHdChain.seed_id = CKeyID(Hash160(mnContainer.seed.begin(), mnContainer.seed.end()));
+    }
+
+    SetHDChain(newHdChain, false);
+
+    if (!SetMnemonicContainer(mnContainer, false))
+        throw std::runtime_error(std::string(__func__) + ": SetMnemonicContainer failed");
+}
+
+
+bool LegacyScriptPubKeyMan::SetMnemonicContainer(const MnemonicContainer& mnContainer, bool memonly) {
+    if (!memonly && !WalletBatch(m_storage.GetDatabase()).WriteMnemonic(mnContainer))
+        throw std::runtime_error(std::string(__func__) + ": writing chain failed");
+    mnemonicContainer = mnContainer;
+    return true;
+}
+
+bool LegacyScriptPubKeyMan::EncryptMnemonicContainer(const CKeyingMaterial& vMasterKeyIn)
+{
+    if (mnemonicContainer.IsCrypted())
+        return true;
+
+    uint256 id = uint256S(hdChain.seed_id.GetHex());
+
+    std::vector<unsigned char> cryptedSeed;
+    if (!EncryptMnemonicSecret(vMasterKeyIn, mnemonicContainer.GetSeed(), id, cryptedSeed))
+        return false;
+    SecureVector secureCryptedSeed(cryptedSeed.begin(), cryptedSeed.end());
+    if (!mnemonicContainer.SetSeed(secureCryptedSeed))
+        return false;
+
+    SecureString mnemonic;
+    if (mnemonicContainer.GetMnemonic(mnemonic)) {
+        std::vector<unsigned char> cryptedMnemonic;
+        SecureVector vectorMnemonic(mnemonic.begin(), mnemonic.end());
+
+        if ((!mnemonic.empty() && !EncryptMnemonicSecret(vMasterKeyIn, vectorMnemonic, id, cryptedMnemonic)))
+            return false;
+
+        SecureVector secureCryptedMnemonic(cryptedMnemonic.begin(), cryptedMnemonic.end());
+        if (!mnemonicContainer.SetMnemonic(secureCryptedMnemonic))
+            return false;
+    }
+
+    mnemonicContainer.SetCrypted(true);
+
+    return true;
+}
+
+bool LegacyScriptPubKeyMan::DecryptMnemonicContainer(MnemonicContainer& mnContainer)
+{
+    if (!mnemonicContainer.IsCrypted())
+        return false;
+
+    uint256 id = uint256S(hdChain.seed_id.GetHex());
+
+    SecureVector seed;
+    SecureVector cryptedSeed = mnemonicContainer.GetSeed();
+    std::vector<unsigned char> vCryptedSeed(cryptedSeed.begin(), cryptedSeed.end());
+    if (!DecryptMnemonicSecret(vCryptedSeed, id, seed))
+        return false;
+
+    mnContainer = mnemonicContainer;
+    if (!mnContainer.SetSeed(seed))
+        return false;
+
+    SecureString cryptedMnemonic;
+
+    if (mnemonicContainer.GetMnemonic(cryptedMnemonic)) {
+        SecureVector vectorMnemonic;
+
+        std::vector<unsigned char> CryptedMnemonic(cryptedMnemonic.begin(), cryptedMnemonic.end());
+        if (!CryptedMnemonic.empty() && !DecryptMnemonicSecret(CryptedMnemonic, id, vectorMnemonic))
+            return false;
+
+        if (!mnContainer.SetMnemonic(vectorMnemonic))
+            return false;
+    }
+
+    mnContainer.SetCrypted(false);
+
+    return true;
+}
+
 bool LegacyScriptPubKeyMan::HaveKey(const CKeyID &address) const
 {
     LOCK(cs_KeyStore);
@@ -969,11 +1081,19 @@ void LegacyScriptPubKeyMan::DeriveNewChildKey(WalletBatch &batch, CKeyMetadata& 
     CExtKey chainChildKey;         //key at m/0'/0' (external) or m/0'/1' (internal)
     CExtKey childKey;              //key at m/0'/0'/<n>'
 
-    // try to get the seed
-    if (!GetKey(hdChain.seed_id, seed))
-        throw std::runtime_error(std::string(__func__) + ": seed not found");
+    //For bip39 we use it's original way for generating keys to make it compatible with hardware and software wallets
+    if(hdChain.nVersion >= CHDChain::VERSION_BIP_39){
+        MnemonicContainer mContainer = mnemonicContainer;
+        DecryptMnemonicContainer(mContainer);
+        SecureVector seed = mContainer.GetSeed();
+        masterKey.SetSeed(&seed[0], seed.size());
+    } else {
+        // try to get the seed
+        if (!GetKey(hdChain.seed_id, seed))
+            throw std::runtime_error(std::string(__func__) + ": seed not found");
 
-    masterKey.SetSeed(seed.begin(), seed.size());
+        masterKey.SetSeed(seed.begin(), seed.size());
+    }
 
     // derive m/0'
     // use hardened derivation (child keys >= 0x80000000 are hardened after bip32)

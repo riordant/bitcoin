@@ -109,6 +109,14 @@ public:
     }
     void abortRescan() override { m_wallet->AbortRescan(); }
     bool backupWallet(const std::string& filename) override { return m_wallet->BackupWallet(filename); }
+    bool getMnemonic(SecureString& mnemonic) override {
+        auto spk_man = m_wallet->GetLegacyScriptPubKeyMan();
+        if(spk_man){
+            spk_man->GetMnemonicContainer().GetMnemonic(mnemonic);
+            return true;
+        }
+        return false;
+    }
     std::string getWalletName() override { return m_wallet->GetName(); }
     bool getNewDestination(const OutputType type, const std::string label, CTxDestination& dest) override
     {

@@ -17,6 +17,8 @@
 #include <qt/networkstyle.h>
 #include <qt/optionsmodel.h>
 #include <qt/platformstyle.h>
+#include <qt/recover.h>
+#include <qt/notifymnemonic.h>
 #include <qt/splashscreen.h>
 #include <qt/utilitydialog.h>
 #include <qt/winshutdownmonitor.h>
@@ -25,6 +27,7 @@
 #include <qt/paymentserver.h>
 #include <qt/walletcontroller.h>
 #include <qt/walletmodel.h>
+#include <wallet/bip39.h>
 #endif // ENABLE_WALLET
 
 #include <interfaces/handler.h>
@@ -57,6 +60,8 @@ Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin);
 Q_IMPORT_PLUGIN(QCocoaIntegrationPlugin);
 #endif
 #endif
+
+static bool newWallet = false;
 
 // Declare meta types used for QMetaObject::invokeMethod
 Q_DECLARE_METATYPE(bool*)
@@ -356,6 +361,9 @@ void BitcoinApplication::initializeResult(bool success)
         Q_EMIT windowShown(window);
 
 #ifdef ENABLE_WALLET
+        if(newWallet)
+            NotifyMnemonic::notify(m_wallet_controller->getOpenWallets());
+
         // Now that initialization/startup is done, process any command-line
         // bitcoin: URIs or payment requests:
         if (paymentServer) {
@@ -520,6 +528,19 @@ int GuiMain(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 #ifdef ENABLE_WALLET
+    // Determine if user wants to create new wallet or recover existing one.
+    // Only show if:
+    // - Using mnemonic (-usemnemonic on (default)) and
+    // - mnemonic not set (default, not setting mnemonic from conf file instead) and
+    // - hdseed not set (default, not setting hd seed from conf file instead)
+
+    if(gArgs.GetBoolArg("-usemnemonic", DEFAULT_USE_MNEMONIC) &&
+       gArgs.GetArg("-mnemonic", "").empty() &&
+       gArgs.GetArg("-hdseed", "not hex")=="not hex"){
+        if(!Recover::askRecover(newWallet))
+            return EXIT_SUCCESS;
+    }
+ 
     // Parse URIs on command line -- this can affect Params()
     PaymentServer::ipcParseCommandLine(*node, argc, argv);
 #endif

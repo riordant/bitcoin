@@ -10,7 +10,7 @@
 #include <script/sign.h>
 #include <wallet/db.h>
 #include <key.h>
-
+#include "mnemoniccontainer.h"
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -65,6 +65,7 @@ extern const std::string HDCHAIN;
 extern const std::string KEY;
 extern const std::string KEYMETA;
 extern const std::string MASTER_KEY;
+extern const std::string MNEMONIC;
 extern const std::string MINVERSION;
 extern const std::string NAME;
 extern const std::string OLD_KEY;
@@ -88,7 +89,8 @@ public:
 
     static const int VERSION_HD_BASE        = 1;
     static const int VERSION_HD_CHAIN_SPLIT = 2;
-    static const int CURRENT_VERSION        = VERSION_HD_CHAIN_SPLIT;
+    static const int VERSION_BIP_39         = 3;
+    static const int CURRENT_VERSION        = VERSION_BIP_39;
     int nVersion;
 
     CHDChain() { SetNull(); }
@@ -264,6 +266,9 @@ public:
 
     //! write the hdchain model (external chain child index counter)
     bool WriteHDChain(const CHDChain& chain);
+
+    //! write the mnemonic
+    bool WriteMnemonic(const MnemonicContainer& mnContainer);
 
     bool WriteWalletFlags(const uint64_t flags);
     //! Begin a new transaction

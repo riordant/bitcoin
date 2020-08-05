@@ -76,6 +76,9 @@ public:
     //! Back up wallet.
     virtual bool backupWallet(const std::string& filename) = 0;
 
+    //! Get mnemonic.
+    virtual bool getMnemonic(SecureString& mnemonic) = 0;
+
     //! Get wallet name.
     virtual std::string getWalletName() = 0;
 

@@ -12,6 +12,7 @@
 #include <util/message.h>
 #include <wallet/crypter.h>
 #include <wallet/ismine.h>
+#include <wallet/mnemoniccontainer.h>
 #include <wallet/walletdb.h>
 #include <wallet/walletutil.h>
 
@@ -286,6 +287,8 @@ private:
     /* the HD chain data model (external chain counters) */
     CHDChain hdChain;
 
+    MnemonicContainer mnemonicContainer;
+
     /* HD derive new child key (on internal or external chain) */
     void DeriveNewChildKey(WalletBatch& batch, CKeyMetadata& metadata, CKey& secret, bool internal = false) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
 
@@ -392,6 +395,14 @@ public:
     /* Set the HD chain model (chain child index counters) */
     void SetHDChain(const CHDChain& chain, bool memonly);
     const CHDChain& GetHDChain() const { return hdChain; }
+
+
+    void GenerateNewMnemonic();
+    bool SetMnemonicContainer(const MnemonicContainer& mnContainer, bool memonly);
+    const MnemonicContainer& GetMnemonicContainer() { return mnemonicContainer; }
+
+    bool EncryptMnemonicContainer(const CKeyingMaterial& vMasterKeyIn);
+    bool DecryptMnemonicContainer(MnemonicContainer& mnContainer);
 
     //! Adds a watch-only address to the store, without saving it to disk (used by LoadWallet)
     bool LoadWatchOnly(const CScript &dest);

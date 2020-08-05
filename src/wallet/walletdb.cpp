@@ -32,6 +32,7 @@ const std::string HDCHAIN{"hdchain"};
 const std::string KEYMETA{"keymeta"};
 const std::string KEY{"key"};
 const std::string MASTER_KEY{"mkey"};
+const std::string MNEMONIC{"mnemonic"};
 const std::string MINVERSION{"minversion"};
 const std::string NAME{"name"};
 const std::string OLD_KEY{"wkey"};
@@ -394,6 +395,13 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             CHDChain chain;
             ssValue >> chain;
             pwallet->GetOrCreateLegacyScriptPubKeyMan()->SetHDChain(chain, true);
+        } else if(strType == DBKeys::MNEMONIC){
+            MnemonicContainer mnContainer;
+            ssValue >> mnContainer;
+            if (!pwallet->GetOrCreateLegacyScriptPubKeyMan()->SetMnemonicContainer(mnContainer, true)) {
+                strErr = "Error reading wallet database: SetMnemonicContainer failed";
+                return false;
+            }
         } else if (strType == DBKeys::FLAGS) {
             uint64_t flags;
             ssValue >> flags;
@@ -754,6 +762,10 @@ bool WalletBatch::EraseDestData(const std::string &address, const std::string &k
 bool WalletBatch::WriteHDChain(const CHDChain& chain)
 {
     return WriteIC(DBKeys::HDCHAIN, chain);
+}
+
+bool WalletBatch::WriteMnemonic(const MnemonicContainer& mnContainer) {
+    return WriteIC(DBKeys::MNEMONIC, mnContainer);
 }
 
 bool WalletBatch::WriteWalletFlags(const uint64_t flags)

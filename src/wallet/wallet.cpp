@@ -27,6 +27,7 @@
 #include <util/moneystr.h>
 #include <util/rbf.h>
 #include <util/translation.h>
+#include <wallet/bip39.h>
 #include <wallet/coincontrol.h>
 #include <wallet/fees.h>
 
@@ -585,13 +586,12 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
         Lock();
         Unlock(strWalletPassphrase);
 
-        // if we are using HD, replace the HD seed with a new one
-        if (auto spk_man = GetLegacyScriptPubKeyMan()) {
-            if (spk_man->IsHDEnabled()) {
-                if (!spk_man->SetupGeneration(true)) {
-                    return false;
-                }
-            }
+        auto spk_man = GetOrCreateLegacyScriptPubKeyMan();
+        if(!spk_man->GetMnemonicContainer().IsNull() && spk_man->GetHDChain().nVersion >= CHDChain::VERSION_BIP_39) {
+            assert(spk_man->EncryptMnemonicContainer(vMasterKey));
+            SetMinVersion(FEATURE_HD);
+            assert(spk_man->SetMnemonicContainer(spk_man->GetMnemonicContainer(), false));
+            TopUpKeyPool();
         }
         Lock();
 
@@ -3878,15 +3878,30 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
         // Always create LegacyScriptPubKeyMan for now
         walletInstance->SetupLegacyScriptPubKeyMan();
 
-        if (!(wallet_creation_flags & (WALLET_FLAG_DISABLE_PRIVATE_KEYS | WALLET_FLAG_BLANK_WALLET))) {
-            LOCK(walletInstance->cs_wallet);
-            for (auto spk_man : walletInstance->GetActiveScriptPubKeyMans()) {
-                if (!spk_man->SetupGeneration()) {
-                    error = _("Unable to generate initial keys").translated;
-                    return nullptr;
-                }
-            }
-        }
+        // Setup mnemonic
+         if(gArgs.GetBoolArg("-usemnemonic", DEFAULT_USE_MNEMONIC)) { 
+             if (gArgs.GetArg("-mnemonicpassphrase", "").size() > 256) {
+                 throw std::runtime_error(std::string(__func__) + ": Mnemonic passphrase is too long, must be at most 256 characters");
+             }
+             // generate a new HD chain
+             auto spk_man = walletInstance->GetLegacyScriptPubKeyMan();
+             spk_man->GenerateNewMnemonic();
+             walletInstance->SetMinVersion(FEATURE_HD);
+             /* set rescan to true.
+              * if blockchain data is not present it has no effect, but it's needed for a mnemonic restore where chain data is present.
+              */
+             gArgs.SoftSetBoolArg("-rescan", true);
+        }else {
+            if (!(wallet_creation_flags & (WALLET_FLAG_DISABLE_PRIVATE_KEYS | WALLET_FLAG_BLANK_WALLET))) {
+                LOCK(walletInstance->cs_wallet);
+                for (auto spk_man : walletInstance->GetActiveScriptPubKeyMans()) {
+                    if (!spk_man->SetupGeneration()) {   
+                        error = _("Unable to generate initial keys").translated; 
+                        return nullptr; 
+                    }                                                                             
+                }                                                                                               
+            }                                                                                                   
+        } 
 
         auto locked_chain = chain.lock();
         walletInstance->chainStateFlushed(locked_chain->getTipLocator());
